@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'models/bot_config.dart';
+import 'services/bot_controller.dart';
+import 'package:intl/intl.dart';
 
 void main() {
   runApp(const MyApp());
@@ -7,119 +10,375 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Telegram to Instagram Bot',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a blue toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const BotHomePage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class BotHomePage extends StatefulWidget {
+  const BotHomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<BotHomePage> createState() => _BotHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _BotHomePageState extends State<BotHomePage> {
+  final _formKey = GlobalKey<FormState>();
+  final _telegramBotTokenController = TextEditingController();
+  final _telegramChannelsController = TextEditingController();
+  final _instagramAccessTokenController = TextEditingController();
+  final _instagramBusinessIdController = TextEditingController();
+  final _pollingIntervalController = TextEditingController(text: '300');
 
-  void _incrementCounter() {
+  BotController? _botController;
+  final List<BotEvent> _events = [];
+  bool _isConfigured = false;
+
+  @override
+  void dispose() {
+    _telegramBotTokenController.dispose();
+    _telegramChannelsController.dispose();
+    _instagramAccessTokenController.dispose();
+    _instagramBusinessIdController.dispose();
+    _pollingIntervalController.dispose();
+    _botController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeBot() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final channels = _telegramChannelsController.text
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final config = BotConfig(
+      telegramBotToken: _telegramBotTokenController.text.trim(),
+      telegramChannelUsernames: channels,
+      instagramAccessToken: _instagramAccessTokenController.text.trim(),
+      instagramBusinessAccountId: _instagramBusinessIdController.text.trim(),
+      pollingIntervalSeconds: int.parse(_pollingIntervalController.text),
+    );
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _events.clear();
+      _botController?.dispose();
+      _botController = BotController(config: config);
     });
+
+    _botController!.events.listen((event) {
+      setState(() {
+        _events.insert(0, event);
+        if (_events.length > 100) {
+          _events.removeLast();
+        }
+      });
+    });
+
+    final success = await _botController!.initialize();
+    if (success) {
+      setState(() {
+        _isConfigured = true;
+      });
+    }
+  }
+
+  void _startBot() {
+    _botController?.start();
+    setState(() {});
+  }
+
+  void _stopBot() {
+    _botController?.stop();
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Telegram to Instagram Bot'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Bot Configuration',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _telegramBotTokenController,
+                        decoration: const InputDecoration(
+                          labelText: 'Telegram Bot Token',
+                          hintText: '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter Telegram bot token';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _telegramChannelsController,
+                        decoration: const InputDecoration(
+                          labelText: 'Telegram Channels (comma-separated)',
+                          hintText: '@channel1, @channel2',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter at least one channel';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _instagramAccessTokenController,
+                        decoration: const InputDecoration(
+                          labelText: 'Instagram Access Token',
+                          hintText: 'Your Instagram Graph API access token',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter Instagram access token';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _instagramBusinessIdController,
+                        decoration: const InputDecoration(
+                          labelText: 'Instagram Business Account ID',
+                          hintText: '1234567890',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter Instagram business account ID';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _pollingIntervalController,
+                        decoration: const InputDecoration(
+                          labelText: 'Polling Interval (seconds)',
+                          hintText: '300',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter polling interval';
+                          }
+                          if (int.tryParse(value) == null) {
+                            return 'Please enter a valid number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _initializeBot,
+                        child: const Text('Initialize Bot'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            const SizedBox(height: 16),
+            if (_isConfigured) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Bot Control',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _botController?.isRunning == true
+                                  ? null
+                                  : _startBot,
+                              icon: const Icon(Icons.play_arrow),
+                              label: const Text('Start Bot'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _botController?.isRunning == false
+                                  ? null
+                                  : _stopBot,
+                              icon: const Icon(Icons.stop),
+                              label: const Text('Stop Bot'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Status: ${_botController?.isRunning == true ? "Running" : "Stopped"}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _botController?.isRunning == true
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Event Log',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _events.clear();
+                              });
+                            },
+                            child: const Text('Clear'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 300,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: _events.isEmpty
+                            ? const Center(
+                                child: Text('No events yet'),
+                              )
+                            : ListView.builder(
+                                itemCount: _events.length,
+                                itemBuilder: (context, index) {
+                                  final event = _events[index];
+                                  return ListTile(
+                                    dense: true,
+                                    leading: Icon(
+                                      _getEventIcon(event.type),
+                                      color: _getEventColor(event.type),
+                                      size: 20,
+                                    ),
+                                    title: Text(
+                                      event.message,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    subtitle: Text(
+                                      DateFormat('HH:mm:ss')
+                                          .format(event.timestamp),
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  IconData _getEventIcon(BotEventType type) {
+    switch (type) {
+      case BotEventType.info:
+        return Icons.info_outline;
+      case BotEventType.success:
+        return Icons.check_circle_outline;
+      case BotEventType.warning:
+        return Icons.warning_amber;
+      case BotEventType.error:
+        return Icons.error_outline;
+    }
+  }
+
+  Color _getEventColor(BotEventType type) {
+    switch (type) {
+      case BotEventType.info:
+        return Colors.blue;
+      case BotEventType.success:
+        return Colors.green;
+      case BotEventType.warning:
+        return Colors.orange;
+      case BotEventType.error:
+        return Colors.red;
+    }
   }
 }
